@@ -2,7 +2,8 @@
 A Keras implementation of PixelRNN by Van Den Oord et al. Google
 arxiv.org/pdf/1601.06759
 
-Shir Gur BGU
+Copyright Shir Gur, 2016
+me@gurshir.com
 """
 
 import theano
