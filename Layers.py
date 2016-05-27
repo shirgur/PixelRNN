@@ -15,7 +15,6 @@ from keras.backend.common import  _FLOATX
 from keras import activations, initializations, regularizers, constraints
 import keras.layers.convolutional as K_conv
 import Utils
-from keras.layers import Permute
 
 class ColRecurrent(Layer):
     def __init__(self, weights=None, reverse=False,
