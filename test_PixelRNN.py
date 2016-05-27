@@ -34,7 +34,7 @@ class PixelRNN(object):
         self.img_rows, self.img_cols = 32, 32
         self.img_channels = 3
 
-        self.margin = 10
+        self.margin = 0
         self.batch_size = 10
 
         self.h = 300
