@@ -62,7 +62,8 @@ class PixelRNN(object):
         self.extra = np.shape(self.Xtrain)[0] % self.batch_size
 
         Ytrain = self.Xtrain.copy()
-        self.Xtrain[:,:,:,-self.margin:] = 0
+        if self.extra > 0:
+            self.Xtrain[:,:,:,-self.margin:] = 0
 
         RGB_Shapr = (np.shape(self.Xtrain)[0], np.shape(self.Xtrain)[2], np.shape(self.Xtrain)[3], 256)
         RGB_Shapr_train = (np.shape(self.Xtrain)[0], np.shape(self.Xtrain)[2]*np.shape(self.Xtrain)[3], 256)
@@ -130,7 +131,7 @@ class PixelRNN(object):
 
         model_in = MaskedConvolution2D(self.h,7,7,mask_type='a', direction='Right', border_mode='same', init='he_uniform')(img)
 
-        for _ in range(2):
+        for _ in range(12):
             model_LSTM = PyramidSTM(self.h_2,3, return_sequences=True, init='he_uniform', inner_init='he_uniform', direction='Right')(model_in)
             model_per = Convolution2D(self.h,1,1, init='he_normal')(model_LSTM)
             model_in = merge([model_in, model_per], mode='sum')
