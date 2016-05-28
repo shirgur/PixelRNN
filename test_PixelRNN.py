@@ -9,12 +9,7 @@ me@gurshir.com
 
 import theano
 import theano.sandbox.cuda
-#theano.sandbox.cuda.use("gpu0")
-
-import pickle
-import os
-
-from scipy.misc import imread
+theano.sandbox.cuda.use("gpu0")
 
 from keras.datasets import cifar10
 
@@ -25,6 +20,7 @@ from keras.models import Model
 from keras.layers import Input, Convolution2D
 from keras.engine import merge
 from keras.optimizers import RMSprop
+from keras.regularizers import l2
 from Layers import MaskedConvolution2D, SoftmaxLayer, GetColors, DiagLSTM, PyramidSTM
 from Utils import  image_categorical_crossentropy
 
@@ -40,7 +36,7 @@ class PixelRNN(object):
         self.h = 300
         self.h_2 = self.h//2
 
-        rms = RMSprop(lr=(1e-6))
+        rms = RMSprop(lr=(1e-6), clipnorm=1)
         self.optimizer = rms
 
         self.Xtrain = []
@@ -61,9 +57,11 @@ class PixelRNN(object):
 
         self.extra = np.shape(self.Xtrain)[0] % self.batch_size
 
-        Ytrain = self.Xtrain.copy()
         if self.extra > 0:
-            self.Xtrain[:,:,:,-self.margin:] = 0
+            self.Xtrain = self.Xtrain[:-self.extra]
+
+        Ytrain = self.Xtrain.copy()
+        self.Xtrain[:,:,:,-self.margin:] = 0
 
         RGB_Shapr = (np.shape(self.Xtrain)[0], np.shape(self.Xtrain)[2], np.shape(self.Xtrain)[3], 256)
         RGB_Shapr_train = (np.shape(self.Xtrain)[0], np.shape(self.Xtrain)[2]*np.shape(self.Xtrain)[3], 256)
@@ -92,7 +90,7 @@ class PixelRNN(object):
 
         model_in = MaskedConvolution2D(self.h,7,7,mask_type='a', direction='Right', border_mode='same', init='he_uniform')(img)
 
-        for _ in range(1):
+        for _ in range(12):
             model_LSTM_F = DiagLSTM(self.h_2,3, return_sequences=True, init='he_uniform', inner_init='he_uniform', direction='Right')(model_in)
             model_LSTM_B = DiagLSTM(self.h_2,3, return_sequences=True, init='he_uniform', inner_init='he_uniform', direction='Right', reverse=True)(model_in)
             model_LSTM = merge([model_LSTM_F, model_LSTM_B], mode='sum')
@@ -129,15 +127,15 @@ class PixelRNN(object):
 
         img = Input(batch_shape=(10, self.img_channels, self.img_rows, self.img_cols), name='input_img')
 
-        model_in = MaskedConvolution2D(self.h,7,7,mask_type='a', direction='Right', border_mode='same', init='he_uniform')(img)
+        model_in = MaskedConvolution2D(self.h,7,7,mask_type='a', direction='Right', border_mode='same', init='he_uniform', W_regularizer=l2(0.0005))(img)
 
         for _ in range(12):
-            model_LSTM = PyramidSTM(self.h_2,3, return_sequences=True, init='he_uniform', inner_init='he_uniform', direction='Right')(model_in)
+            model_LSTM = PyramidSTM(self.h_2,3, return_sequences=True, init='he_uniform', inner_init='he_uniform', direction='Right', W_regularizer=l2(0.0005))(model_in)
             model_per = Convolution2D(self.h,1,1, init='he_normal')(model_LSTM)
             model_in = merge([model_in, model_per], mode='sum')
 
-        model_out = MaskedConvolution2D(self.h,1,1,mask_type='b', direction='Right', border_mode='same', activation='relu', init='he_uniform')(model_in)
-        model_out = MaskedConvolution2D(256*3,1,1,mask_type='b', direction='Right', border_mode='same', activation='relu', init='he_uniform')(model_out)
+        model_out = MaskedConvolution2D(self.h,1,1,mask_type='b', direction='Right', border_mode='same', activation='relu', init='he_uniform', W_regularizer=l2(0.0005))(model_in)
+        model_out = MaskedConvolution2D(256*3,1,1,mask_type='b', direction='Right', border_mode='same', activation='relu', init='he_uniform', W_regularizer=l2(0.0005))(model_out)
 
         Red = GetColors(0)(model_out)
         Green = GetColors(1)(model_out)
@@ -168,7 +166,7 @@ class PixelRNN(object):
 
         model_in = MaskedConvolution2D(self.h,7,7,mask_type='a', direction='Right', border_mode='same', init='he_uniform')(img)
 
-        for _ in range(2):
+        for _ in range(15):
             model_in = MaskedConvolution2D(self.h,3,3,mask_type='b', direction='Right', border_mode='same', init='he_uniform')(model_in)
 
         model_out = MaskedConvolution2D(self.h,1,1,mask_type='b', direction='Right', border_mode='same', activation='relu', init='he_uniform')(model_in)
@@ -215,17 +213,17 @@ class PixelRNN(object):
         print("Saving weights...")
         self.comp_net.save_weights('Data/comp_model.h5', overwrite=True)
 
-    def fit_net_PyramidSTM(self, batch_size=None, nb_epoch=5):
+    def fit_net_PyramidSTM(self, batch_size=None, nb_epoch=3):
         if self.comp_net is None:
             self.build_net_PyramidSTM(load_weights=False)
         if batch_size is not None:
             self.batch_size = batch_size
         # Fit
         print("Fitting...")
-        self.comp_net.fit({'input_img':self.Xtrain[:-self.extra]},
-                          {'Red_out':self.Rtrain[:-self.extra],
-                           'Green_out':self.Gtrain[:-self.extra],
-                           'Blue_out':self.Btrain[:-self.extra]},
+        self.comp_net.fit({'input_img':self.Xtrain},
+                          {'Red_out':self.Rtrain,
+                           'Green_out':self.Gtrain,
+                           'Blue_out':self.Btrain},
                   batch_size=self.batch_size, nb_epoch=nb_epoch, verbose=1,
                           callbacks=[LearningRateScheduler(self.scd)])
 
@@ -256,7 +254,7 @@ class PixelRNN(object):
             return float(0.1)
         if x%3 == 0:
             return float(1./x)
-        return 0.001
+        return (1e-6)
 
 p = PixelRNN()
 p.fit_net_PyramidSTM()
